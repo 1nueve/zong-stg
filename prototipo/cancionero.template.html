@@ -91,6 +91,10 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 .item .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .m{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .miss{color:var(--warn)}
+.tagdot.local{border-color:var(--warn);color:var(--warn)}
+.seg.src{align-self:flex-start}
+.seg.src small{opacity:.7;margin-left:4px}
+.minebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 16px 0;padding:10px 12px;border-radius:8px;background:var(--warn-soft);font-size:14px}
 .tagdot.mod{border-color:var(--accent);color:var(--accent)}
 .item select{font-family:var(--display);font-weight:700;font-size:17px;border:1px solid var(--line);border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px;min-height:36px}
 .item .x{width:36px;height:36px;border:0;background:none;color:var(--muted);font-size:20px;border-radius:50%}
@@ -222,12 +226,14 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
   <main id="main" data-tab="lib">
     <section class="col libcol" aria-label="Cancionero">
       <div class="colhead">
+        <div class="seg src" id="srcSeg" role="group" aria-label="Origen de los cantos"></div>
         <div class="row">
           <input class="search" id="q" type="search" placeholder="Buscar título, artista o letra" autocomplete="off">
           <select class="sel" id="keyFilter" aria-label="Filtrar por tono"></select>
         </div>
         <div class="chips" id="chips"></div>
       </div>
+      <div class="minebar hidden" id="mineBar"><span>Estos cantos solo están en tu navegador. Compártelos para que se publiquen para todo el grupo.</span><button class="btn primary" id="shareMine">Compartir mis cantos</button></div>
       <div class="count" id="libCount"></div>
       <div class="scroll"><ul class="songs" id="songs"></ul></div>
       <div class="setfoot">
@@ -293,6 +299,7 @@ const $=id=>document.getElementById(id);
 document.body.prepend($('shell').content.cloneNode(true));
 
 let DATA=JSON.parse($('data').textContent);
+const PUB_SONGS=JSON.parse($('data').textContent).songs;
 let BASE=DATA.savedAt;
 let dirty=false, ART=null, DL=null;
 /* Fuera de claude.ai (por ejemplo en AWS Amplify) no hay window.claude: se descarga con un enlace normal y "Guardar" baja un .zip para subirlo al hosting. */
@@ -399,19 +406,34 @@ function renderFilters(){
   $('keyFilter').innerHTML='<option value="">Todos los tonos</option>'+keys.map(k=>'<option value="'+esc(k)+'"'+(ui.key===k?' selected':'')+'>'+esc(k)+'</option>').join('');
 }
 function inSet(s){const st=curSet();return !!st&&st.items.some(it=>findSong(it)===s);}
+/* ---------- del grupo / míos ---------- */
+let PUB=null;
+function songOrigin(s){
+  if(!PUB){PUB={};PUB_SONGS.forEach(x=>{PUB[songKey(x.a.Title,x.a.Artist)]=songSig(x);});}
+  const p=PUB[songKey(s.a.Title,s.a.Artist)];
+  return p==null?'mine':(p!==songSig(s)?'edited':'group');
+}
+function renderSrc(){
+  let g=0,m=0;DATA.songs.forEach(s=>{const o=songOrigin(s);if(o==='group')g++;else m++;if(o==='edited')g++;});
+  const b=(id,txt)=>'<button data-src="'+id+'" aria-pressed="'+((ui.src||'all')===id)+'">'+txt+'</button>';
+  $('srcSeg').innerHTML=b('all','Todos')+b('group','Del grupo <small>'+g+'</small>')+b('mine','Míos <small>'+m+'</small>');
+  $('mineBar').classList.toggle('hidden',ui.src!=='mine'||!m);
+}
 function renderLib(){
+  renderSrc();
   const q=norm(ui.q);
-  let list=DATA.songs.filter(s=>(!ui.tag||s.tags.includes(ui.tag))&&(!ui.key||defKey(s)===ui.key));
+  let list=DATA.songs.filter(s=>(!ui.tag||s.tags.includes(ui.tag))&&(!ui.key||defKey(s)===ui.key)&&(ui.src!=='mine'||songOrigin(s)!=='group')&&(ui.src!=='group'||songOrigin(s)!=='mine'));
   if(q){
     list=list.map(s=>({s,r:s._ta.includes(q)?(norm(s.a.Title).startsWith(q)?0:1):(s._text.includes(q)?2:9)})).filter(x=>x.r<9).sort((a,b)=>a.r-b.r||norm(a.s.a.Title).localeCompare(norm(b.s.a.Title))).map(x=>x.s);
   } else list=list.slice().sort((a,b)=>norm(a.a.Title).localeCompare(norm(b.a.Title)));
   $('libCount').textContent=list.length+(list.length===1?' canción':' canciones');
-  if(!list.length){$('songs').innerHTML='<li class="empty-note">No hay canciones con esos filtros.</li>';return;}
+  if(!list.length){$('songs').innerHTML='<li class="empty-note">'+(ui.src==='mine'?'No tienes cantos solo en este navegador. Todo lo que ves es del grupo.':'No hay canciones con esos filtros.')+'</li>';return;}
   $('songs').innerHTML=list.map(s=>{
     const k=defKey(s),inn=inSet(s);
     const tg=s.tags.filter(t=>!/^[A-G][#b]?m?$/.test(t)).join(' · ');
-    const meta=[s.a.Artist,tg].filter(Boolean).join(' — ');
-    return '<li class="song"><button class="open" data-open="'+s._i+'"><span class="t">'+esc(s.a.Title.trim()||'Sin título')+'</span><span class="m">'+esc(meta||'—')+'</span></button><span class="key" title="Tono">'+esc(k)+'</span><button class="add'+(inn?' in':'')+'" data-add="'+s._i+'" aria-label="'+(inn?'Ya está en la lista':'Agregar a la lista')+'">'+(inn?'✓':'+')+'</button></li>';
+    const meta=[s.a.Artist,tg].filter(Boolean).join(' — ');const o=songOrigin(s);
+    const badge=o==='mine'?'<span class="tagdot local">Solo en este navegador</span> ':o==='edited'?'<span class="tagdot local">Editado aquí</span> ':'';
+    return '<li class="song"><button class="open" data-open="'+s._i+'"><span class="t">'+esc(s.a.Title.trim()||'Sin título')+'</span><span class="m">'+badge+esc(meta||'—')+'</span></button><span class="key" title="Tono">'+esc(k)+'</span><button class="add'+(inn?' in':'')+'" data-add="'+s._i+'" aria-label="'+(inn?'Ya está en la lista':'Agregar a la lista')+'">'+(inn?'✓':'+')+'</button></li>';
   }).join('');
 }
 
@@ -824,6 +846,16 @@ $('fileIn').addEventListener('change',async e=>{
   applyMerge(m,false,'de '+f.name.replace(/\.mysongbook$/i,''));
   markDirty();renderAll();
   toast('Listo: '+m.fresh.length+' canciones y '+m.newSets.length+' listas agregadas');
+});
+$('srcSeg').addEventListener('click',e=>{const b=e.target.closest('[data-src]');if(!b)return;ui.src=b.dataset.src;renderLib();});
+$('shareMine').addEventListener('click',async()=>{
+  const mine=DATA.songs.filter(s=>songOrigin(s)!=='group');if(!mine.length)return;
+  if(!DL||typeof JSZip==='undefined'){toast('No se pudo preparar el archivo.');return;}
+  const r=await dialog({title:'Compartir mis cantos',text:'Se descarga un .zip con tus '+mine.length+' cantos que solo están en este navegador. Mándalo a quien publica; lo carga con Agregar desde MySongbook.',ok:'Descargar'});
+  if(!r)return;
+  try{const zip=new JSZip();zip.file('Mis cantos.mysongbook','<?xml version="1.0" encoding="UTF-8"?>\n<Songs>'+mine.map(songXML).join('')+'</Songs>');
+    await DL.save({filename:'Mis cantos.zip',data:await zip.generateAsync({type:'blob'})});toast('Archivo listo');}
+  catch(e){if(e&&e.code==='declined')return;toast('No se pudo descargar el archivo.');}
 });
 $('tabLib').addEventListener('click',()=>setTab('lib'));
 $('tabSet').addEventListener('click',()=>setTab('set'));
