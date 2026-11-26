@@ -238,8 +238,6 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
       <div class="scroll"><ul class="songs" id="songs"></ul></div>
       <div class="setfoot">
         <button class="btn primary" id="newSong">Nueva canción</button>
-        <button class="btn" id="importBtn">Agregar desde MySongbook</button>
-        <input type="file" id="fileIn" class="hidden">
       </div>
     </section>
     <section class="col setcol" aria-label="Lista">
@@ -247,6 +245,8 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
         <div class="setpick">
           <select class="sel" id="setSel" aria-label="Elegir lista"></select>
           <button class="btn primary" id="newSet">Nueva lista</button>
+          <button class="btn" id="importBtn">Subir lista</button>
+          <input type="file" id="fileIn" class="hidden" accept=".zip,.mysongbook,.xml">
         </div>
         <div>
           <p class="setname" id="setName"></p>
@@ -815,7 +815,7 @@ $('copySet').addEventListener('click',async()=>{const st=curSet();const txt=setT
 $('exportSet').addEventListener('click',async()=>{
   const st=curSet();if(!st.items.length){toast('La lista está vacía');return;}
   if(!DL||typeof JSZip==='undefined'){dialog({title:'No se puede descargar aquí',text:'Abre esta página en claude.ai para descargar el archivo.',ok:'Entendido',cancel:false});return;}
-  const r=await dialog({title:'Compartir lista',text:'Se descarga un .zip con esta lista y sus canciones (con los cambios hechos para esta lista). Mándalo a quien quieras: lo carga con Agregar desde MySongbook. También sirve en el iPad: ábrelo en Archivos, toca el .mysongbook y elige MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
+  const r=await dialog({title:'Compartir lista',text:'Se descarga un .zip con esta lista y sus canciones (con los cambios hechos para esta lista). Mándalo a quien quieras: lo carga con Subir lista (no hace falta descomprimirlo). También sirve en el iPad: ábrelo en Archivos, toca el .mysongbook y elige MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
   if(!r)return;
   try{
     const zip=new JSZip();const name=safeName(st.title);
@@ -827,7 +827,11 @@ $('exportSet').addEventListener('click',async()=>{
 $('importBtn').addEventListener('click',()=>$('fileIn').click());
 $('fileIn').addEventListener('change',async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
-  let res;try{res=parseMSB(await f.text());}catch(err){toast('Ese archivo no parece un respaldo de MySongbook.');return;}
+  let txt;try{
+    if(/\.zip$/i.test(f.name)){if(typeof JSZip==='undefined')throw 0;const z=await JSZip.loadAsync(f);const e=Object.values(z.files).find(x=>!x.dir&&/\.mysongbook$/i.test(x.name));if(!e)throw 0;txt=await e.async('string');}
+    else txt=await f.text();
+  }catch(err){toast('Ese archivo no parece una lista compartida.');return;}
+  let res;try{res=parseMSB(txt);}catch(err){toast('Ese archivo no parece un respaldo de MySongbook.');return;}
   if(!res.songs.length&&!res.sets.length){toast('El archivo no trae canciones ni listas.');return;}
   /* Se suma al cancionero: nunca se borra nada. Cantos con el mismo título y artista se consideran el mismo. */
   res.sets.forEach(x=>{x.id='';});
@@ -840,7 +844,7 @@ $('fileIn').addEventListener('change',async e=>{
   const lines=['Se suma a lo que ya tienes; no se borra nada.',
     m.fresh.length+' canciones nuevas',m.same+' que ya tienes iguales'+(asList?', '+asList+' con cambios que se guardan solo dentro de la lista (tus originales no cambian)':''),
     m.newSets.length+' listas nuevas'+(m.knownSets?' ('+m.knownSets+' ya las tienes)':'')];
-  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo descarguen con Compartir lista');
+  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo compartan con Compartir lista');
   const r=await dialog({title:'Cargar '+f.name,text:lines.join(' · '),ok:'Cargar'});
   if(!r)return;
   applyMerge(m,false,'de '+f.name.replace(/\.mysongbook$/i,''));
@@ -851,7 +855,7 @@ $('srcSeg').addEventListener('click',e=>{const b=e.target.closest('[data-src]');
 $('shareMine').addEventListener('click',async()=>{
   const mine=DATA.songs.filter(s=>songOrigin(s)!=='group');if(!mine.length)return;
   if(!DL||typeof JSZip==='undefined'){toast('No se pudo preparar el archivo.');return;}
-  const r=await dialog({title:'Compartir mis cantos',text:'Se descarga un .zip con tus '+mine.length+' cantos que solo están en este navegador. Mándalo a quien publica; lo carga con Agregar desde MySongbook.',ok:'Descargar'});
+  const r=await dialog({title:'Compartir mis cantos',text:'Se descarga un .zip con tus '+mine.length+' cantos que solo están en este navegador. Mándalo a quien publica; lo carga con Subir lista (no hace falta descomprimirlo).',ok:'Descargar'});
   if(!r)return;
   try{const zip=new JSZip();zip.file('Mis cantos.mysongbook','<?xml version="1.0" encoding="UTF-8"?>\n<Songs>'+mine.map(songXML).join('')+'</Songs>');
     await DL.save({filename:'Mis cantos.zip',data:await zip.generateAsync({type:'blob'})});toast('Archivo listo');}
