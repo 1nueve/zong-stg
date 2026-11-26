@@ -91,6 +91,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 .item .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .m{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .miss{color:var(--warn)}
+.tagdot.mod{border-color:var(--accent);color:var(--accent)}
 .item select{font-family:var(--display);font-weight:700;font-size:17px;border:1px solid var(--line);border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px;min-height:36px}
 .item .x{width:36px;height:36px;border:0;background:none;color:var(--muted);font-size:20px;border-radius:50%}
 .item .x:hover{color:var(--bad);background:var(--bg)}
@@ -253,7 +254,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
       <div class="setfoot">
         <button class="btn primary" id="playSet">Ver la lista con acordes</button>
         <button class="btn" id="copySet">Copiar como texto</button>
-        <button class="btn" id="exportSet">Descargar para MySongbook</button>
+        <button class="btn" id="exportSet">Compartir lista</button>
       </div>
     </section>
   </main>
@@ -327,6 +328,8 @@ function reindex(){
     s._text=norm(s.parts.map(p=>(p.Lyrics||'').replace(/\[[^\]]*\]|\{[^}]*\}/g,'')).join(' '));
     s._ta=norm(s.a.Title+' '+s.a.Artist);});
 }
+/* Una canción en una lista puede traer su propia versión (it.parts): solo vive en esa lista; el original del cancionero no cambia. */
+function itemSong(it){const s=findSong(it);if(!s||!it.parts)return s;return {a:s.a,parts:it.parts,tags:s.tags,_base:s,_item:it};}
 function findSong(it){const i=idx[songKey(it.t,it.ar)];if(i!=null)return DATA.songs[i];const j=idxT[norm(it.t)];return j!=null?DATA.songs[j]:null;}
 
 /* ---------- estado ---------- */
@@ -434,7 +437,7 @@ function renderSet(){
   $('items').innerHTML=st.items.map((it,i)=>{
     const s=findSong(it);
     const tg=s?s.tags.filter(t=>!/^[A-G][#b]?m?$/.test(t)):[];
-    const meta=s?esc(it.ar||s.a.Artist||'')+(tg.length?' '+tg.map(t=>'<span class="tagdot">'+esc(t)+'</span>').join(''):''):'<span class="miss">No está en tu cancionero</span>';
+    const meta=s?esc(it.ar||s.a.Artist||'')+(it.parts?' <span class="tagdot mod">Modificada para esta lista</span>':'')+(tg.length?' '+tg.map(t=>'<span class="tagdot">'+esc(t)+'</span>').join(''):''):'<span class="miss">No está en tu cancionero</span>';
     const grip=hasSort?'<span class="grip" aria-hidden="true">≡</span>':'<span class="mv"><button data-up="'+i+'" aria-label="Subir">▲</button><button data-down="'+i+'" aria-label="Bajar">▼</button></span>';
     return '<li class="item" data-i="'+i+'">'+grip+'<span class="n">'+(i+1)+'</span><button class="open" data-play="'+i+'"><span class="t">'+esc(it.t.trim()||'Sin título')+'</span><span class="m">'+meta+'</span></button><select data-key="'+i+'" aria-label="Tono de '+esc(it.t)+'">'+keyOptions(s,it.key||(s?defKey(s):''))+'</select><button class="x" data-del="'+i+'" aria-label="Quitar de la lista">×</button></li>';
   }).join('')||'<li class="empty-note">Esta lista está vacía. Agrega canciones con el botón + del cancionero.</li>';
@@ -492,7 +495,8 @@ function renderViewer(){
   $('vT').textContent=s.a.Title.trim()||'Sin título';
   $('vFT').innerHTML=esc(s.a.Title.trim()||'Sin título')+'<span class="k">'+esc(V.key)+'</span>';
   const st=curSet();
-  $('vA').textContent=[s.a.Artist,origKey(s)!==V.key?'Original en '+origKey(s):'',+s.a.BPM?s.a.BPM+' bpm':'',s.tags.filter(t=>!isKeyTag(t)).join(', ')].filter(Boolean).join(' · ');
+  $('vEdit').textContent=V.setIdx>=0&&st?'Editar para esta lista':'Editar';
+  $('vA').textContent=[s._item?'Versión de esta lista':'',s.a.Artist,origKey(s)!==V.key?'Original en '+origKey(s):'',+s.a.BPM?s.a.BPM+' bpm':'',s.tags.filter(t=>!isKeyTag(t)).join(', ')].filter(Boolean).join(' · ');
   $('kVal').textContent=V.key;
   const sm=semis(s,V.key),fl=FLATKEYS.has(V.key);
   $('sheet').style.setProperty('--fs',V.fs+'px');
@@ -519,7 +523,7 @@ function renderViewer(){
 function openSong(s,key,setIdx){V.song=s;V.key=key||defKey(s);V.setIdx=setIdx==null?-1:setIdx;$('viewer').classList.add('on');$('vBody').scrollTop=0;renderViewer();}
 function openSetItem(i){
   const st=curSet();if(!st)return;
-  for(let j=i;j<st.items.length;j++){const s=findSong(st.items[j]);if(s){if(j!==i)toast('Una canción no está en tu cancionero y se saltó');openSong(s,st.items[j].key||defKey(s),j);return;}}
+  for(let j=i;j<st.items.length;j++){const s=itemSong(st.items[j]);if(s){if(j!==i)toast('Una canción no está en tu cancionero y se saltó');openSong(s,st.items[j].key||defKey(s),j);return;}}
   toast('Esa canción no está en tu cancionero');
 }
 function shiftKey(d){
@@ -533,7 +537,7 @@ function shiftKey(d){
 const isKeyTag=t=>/^[A-G][#b]?m?$/.test(t);
 function allTags(){const c={};DATA.songs.forEach(s=>s.tags.forEach(t=>{if(!isKeyTag(t))c[t]=(c[t]||0)+1;}));return Object.keys(c).sort((a,b)=>c[b]-c[a]||a.localeCompare(b));}
 function editTags(){
-  const s=V.song;if(!s)return;
+  const s=V.song&&(V.song._base||V.song);if(!s)return;
   const sel=new Set(s.tags.filter(t=>!isKeyTag(t)));
   const pool=[...new Set(allTags().concat([...sel]))];
   const chips=()=>pool.map(t=>'<button class="chip" data-t="'+esc(t)+'" aria-pressed="'+sel.has(t)+'">'+esc(t)+'</button>').join('');
@@ -658,7 +662,7 @@ function editSong(s){
     }
     close();reindex();markDirty();renderAll();
     const st=curSet();const it=V.setIdx>=0&&st?st.items[V.setIdx]:null;
-    if(!isNew&&it&&findSong(it)===s)openSong(s,it.key||defKey(s),V.setIdx);else openSong(s,defKey(s));
+    if(!isNew&&it&&findSong(it)===s)openSong(itemSong(it),it.key||defKey(s),V.setIdx);else openSong(s,defKey(s));
     toast(isNew?'Canción agregada. Usa + en el cancionero para sumarla a una lista.':'Canción actualizada');
   };
   if(!isNew)$('eDel').onclick=async()=>{
@@ -666,6 +670,28 @@ function editSong(s){
     const r=await dialog({title:'¿Eliminar "'+s.a.Title.trim()+'"?',text:'Se quita del cancionero de esta página. Si está en alguna lista, ahí aparecerá como no encontrada.',ok:'Eliminar',danger:true});
     if(!r)return;
     DATA.songs=DATA.songs.filter(x=>x!==s);reindex();markDirty();$('viewer').classList.remove('on');V.song=null;renderAll();toast('Canción eliminada');
+  };
+}
+
+/* ---------- versión para una lista ---------- */
+function editItem(it){
+  const base=findSong(it);if(!base)return;
+  const st=curSet();
+  const d=$('dlg');d.className='dlg wide';
+  d.innerHTML='<div class="dhead"><h3>Editar para esta lista</h3></div>'+
+    '<p>'+esc(base.a.Title.trim())+' · los cambios solo se usan en «'+esc(st.title||'esta lista')+'». La canción original del cancionero no cambia. El tono se cambia con + y − arriba.</p>'+
+    '<label class="lab" for="iL">Letra y acordes<textarea id="iL" class="code" spellcheck="false">'+esc(partsToText(it.parts||base.parts))+'</textarea></label>'+
+    '<p class="hint">Escribe los acordes entre corchetes, como [G]Cristo. Para separar secciones escribe una línea como Coro: o Verso 1:</p>'+
+    '<div class="acts">'+(it.parts?'<button class="btn" id="iOrig" style="margin-right:auto">Volver a la original</button>':'')+'<button class="btn" id="dlgNo">Cancelar</button><button class="btn primary" id="iOk">Guardar para esta lista</button></div>';
+  $('scrim').classList.add('on');d.scrollTop=0;
+  const close=()=>{$('scrim').classList.remove('on');d.className='dlg';};
+  const after=msg=>{close();markDirty();renderSet();openSong(itemSong(it),it.key||defKey(base),V.setIdx);toast(msg);};
+  $('dlgNo').onclick=close;
+  if($('iOrig'))$('iOrig').onclick=()=>{delete it.parts;after('Se usa otra vez la original');};
+  $('iOk').onclick=()=>{
+    const parts=textToParts($('iL').value);
+    if(songSig({a:base.a,parts})===songSig(base))delete it.parts;else it.parts=parts;
+    after(it.parts?'Guardado solo para esta lista':'Sin cambios: se usa la original');
   };
 }
 
@@ -680,7 +706,7 @@ function itemXML(it){
 }
 function setXML(st,withSongs){
   let x='<?xml version="1.0" encoding="UTF-8"?>\n<Songs>';
-  if(withSongs){const seen=new Set();st.items.forEach(it=>{const s=findSong(it);if(s&&!seen.has(s)){seen.add(s);x+=songXML(s);}});}
+  if(withSongs){const seen=new Set();st.items.forEach(it=>{const s=findSong(it);if(s&&!seen.has(s)){seen.add(s);x+=songXML(it.parts?itemSong(it):s);}});}
   x+='<Set Title="'+xa(st.title)+'">'+st.items.map(itemXML).join('')+'</Set></Songs>';
   return x;
 }
@@ -765,7 +791,7 @@ $('copySet').addEventListener('click',async()=>{const st=curSet();const txt=setT
 $('exportSet').addEventListener('click',async()=>{
   const st=curSet();if(!st.items.length){toast('La lista está vacía');return;}
   if(!DL||typeof JSZip==='undefined'){dialog({title:'No se puede descargar aquí',text:'Abre esta página en claude.ai para descargar el archivo.',ok:'Entendido',cancel:false});return;}
-  const r=await dialog({title:'Descargar para MySongbook',text:'Se descarga un .zip con el archivo .mysongbook de esta lista. En el iPad, ábrelo en Archivos para descomprimirlo, toca el archivo .mysongbook y elige abrirlo con MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
+  const r=await dialog({title:'Compartir lista',text:'Se descarga un .zip con esta lista y sus canciones (con los cambios hechos para esta lista). Mándalo a quien quieras: lo carga con Agregar desde MySongbook. También sirve en el iPad: ábrelo en Archivos, toca el .mysongbook y elige MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
   if(!r)return;
   try{
     const zip=new JSZip();const name=safeName(st.title);
@@ -784,13 +810,16 @@ $('fileIn').addEventListener('change',async e=>{
   const m=planMerge(res);
   const inFile=new Set(res.songs.map(x=>songKey(x.a.Title,x.a.Artist)));
   const missing=new Set();res.sets.forEach(st=>st.items.forEach(it=>{const k=songKey(it.t,it.ar);if(!inFile.has(k)&&idx[k]==null&&!(norm(it.t) in idxT))missing.add(k);}));
+  /* Las canciones que ya tienes pero vienen distintas NO cambian tu original: quedan como versión de la lista que las trae. */
+  const chg={};m.changed.forEach(([i,x])=>{chg[songKey(x.a.Title,x.a.Artist)]=x.parts;});
+  let asList=0;m.newSets.forEach(st=>st.items.forEach(it=>{const k=songKey(it.t,it.ar);if(chg[k]){it.parts=chg[k];asList++;}}));
   const lines=['Se suma a lo que ya tienes; no se borra nada.',
-    m.fresh.length+' canciones nuevas',m.same+' que ya tienes iguales'+(m.changed.length?', '+m.changed.length+' que ya tienes pero con cambios':''),
+    m.fresh.length+' canciones nuevas',m.same+' que ya tienes iguales'+(asList?', '+asList+' con cambios que se guardan solo dentro de la lista (tus originales no cambian)':''),
     m.newSets.length+' listas nuevas'+(m.knownSets?' ('+m.knownSets+' ya las tienes)':'')];
-  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo descarguen con "Incluir las canciones completas" marcado');
-  const r=await dialog({title:'Cargar '+f.name,text:lines.join(' · '),check:m.changed.length?'Reemplazar las '+m.changed.length+' canciones con cambios por la versión del archivo':undefined,ok:'Cargar'});
+  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo descarguen con Compartir lista');
+  const r=await dialog({title:'Cargar '+f.name,text:lines.join(' · '),ok:'Cargar'});
   if(!r)return;
-  applyMerge(m,r.checked,'de '+f.name.replace(/\.mysongbook$/i,''));
+  applyMerge(m,false,'de '+f.name.replace(/\.mysongbook$/i,''));
   markDirty();renderAll();
   toast('Listo: '+m.fresh.length+' canciones y '+m.newSets.length+' listas agregadas');
 });
@@ -837,10 +866,10 @@ $('secNav').addEventListener('click',e=>{
 });
 let spyRaf=0;$('vBody').addEventListener('scroll',()=>{if(spyRaf)return;spyRaf=requestAnimationFrame(()=>{spyRaf=0;spySec();});},{passive:true});
 $('vTags').addEventListener('click',editTags);
-$('vEdit').addEventListener('click',()=>editSong(V.song));
+$('vEdit').addEventListener('click',()=>{const st=curSet();if(V.setIdx>=0&&st&&st.items[V.setIdx])editItem(st.items[V.setIdx]);else editSong(V.song);});
 $('newSong').addEventListener('click',()=>editSong(null));
-$('vPrev').addEventListener('click',()=>{const st=curSet();for(let j=V.setIdx-1;j>=0;j--){const s=findSong(st.items[j]);if(s){openSong(s,st.items[j].key||defKey(s),j);return;}}});
-$('vNext').addEventListener('click',()=>{const st=curSet();for(let j=V.setIdx+1;j<st.items.length;j++){const s=findSong(st.items[j]);if(s){openSong(s,st.items[j].key||defKey(s),j);return;}}});
+$('vPrev').addEventListener('click',()=>{const st=curSet();for(let j=V.setIdx-1;j>=0;j--){const s=itemSong(st.items[j]);if(s){openSong(s,st.items[j].key||defKey(s),j);return;}}});
+$('vNext').addEventListener('click',()=>{const st=curSet();for(let j=V.setIdx+1;j<st.items.length;j++){const s=itemSong(st.items[j]);if(s){openSong(s,st.items[j].key||defKey(s),j);return;}}});
 document.addEventListener('keydown',e=>{
   if($('scrim').classList.contains('on')){if(e.key==='Escape')$('dlgNo')&&$('dlgNo').click();return;}
   if(!$('viewer').classList.contains('on'))return;
