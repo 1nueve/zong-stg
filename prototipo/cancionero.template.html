@@ -101,6 +101,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 .mv button{border:0;background:none;color:var(--muted);padding:0 4px;font-size:13px;line-height:1.1}
 .setfoot{border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;background:var(--surface)}
 .tagdot{display:inline-block;font-size:12px;padding:0 6px;border-radius:4px;border:1px solid var(--line);margin-right:4px;color:var(--muted)}
+.banner.upd{background:var(--accent-soft)}
 .banner{background:var(--warn-soft);color:var(--ink);padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px;border-bottom:1px solid var(--line)}
 /* viewer */
 .viewer{position:fixed;inset:0;background:var(--surface);display:none;flex-direction:column;z-index:20}
@@ -213,6 +214,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
     </div>
   </header>
   <div class="banner hidden" id="banner"></div>
+  <div class="banner upd hidden" id="updBanner" role="status"><span>Hay una nueva versión del cancionero. Actualiza para ver los cambios.</span><button class="btn primary" id="updBtn">↻ Actualizar</button></div>
   <nav class="tabs" role="tablist">
     <button role="tab" id="tabLib" aria-selected="true">Canciones</button>
     <button role="tab" id="tabSet" aria-selected="false">Lista <span id="tabCount"></span></button>
@@ -923,6 +925,24 @@ $('vBody').addEventListener('touchend',e=>{
 $('vBody').addEventListener('touchcancel',()=>{sw=null;},{passive:true});
 window.addEventListener('beforeunload',()=>ss.set('msb-ui',ui));
 
+/* ---------- aviso de versión nueva (fuera de claude.ai) ---------- */
+function pageSig(doc){const d=doc.getElementById('data'),a=doc.getElementById('app');let t='';try{t=JSON.parse(d.textContent).savedAt||'';}catch(e){}const c=a?a.textContent:'';let h=0;for(let i=0;i<c.length;i++)h=(h*31+c.charCodeAt(i))|0;return t+'|'+h;}
+function watchUpdates(){
+  const mine=pageSig(document);let busy=false;
+  const check=async()=>{
+    if(busy||document.hidden||!$('updBanner').classList.contains('hidden'))return;busy=true;
+    try{
+      const u=location.href.split('#')[0];const r=await fetch(u+(u.includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'});
+      if(r.ok){const doc=new DOMParser().parseFromString(await r.text(),'text/html');if(doc.getElementById('data')&&pageSig(doc)!==mine)$('updBanner').classList.remove('hidden');}
+    }catch(e){}
+    busy=false;
+  };
+  $('updBtn').onclick=()=>{ss.set('msb-ui',ui);location.reload();};
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  window.addEventListener('focus',check);
+  setInterval(check,120000);setTimeout(check,3000);
+}
+
 /* ---------- arranque ---------- */
 reindex();
 if(!curSet()&&DATA.sets[0])ui.set=DATA.sets[0].id; else if(curSet())ui.set=curSet().id;
@@ -945,7 +965,7 @@ else if(draft&&draft.data){
 }
 setTab(ui.tab||'lib');
 renderAll();
-if(HOSTED){DL={save:blobDownload};renderStatus();}
+if(HOSTED){DL={save:blobDownload};renderStatus();watchUpdates();}
 else{
   window.claude.use('artifact').then(a=>{ART=a;renderStatus();}).catch(()=>{});
   window.claude.use('downloads').then(d=>{DL=d;$('exportSet').classList.toggle('hidden',!d);}).catch(()=>{});
