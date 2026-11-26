@@ -1,0 +1,20 @@
+# Datos con letras de cantos: no se suben al repositorio (derechos de autor)
+*.mysongbook
+prototipo/datos/
+prototipo/cancionero.html
+*.zip
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencias y builds (para cuando exista la app)
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+sitio/

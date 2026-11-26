@@ -1,0 +1,18 @@
+# Publicación del prototipo en AWS Amplify desde GitHub.
+# Los cantos NO están en el repositorio (derechos de autor): se bajan de un archivo privado en S3.
+# En la consola de Amplify configura la variable de entorno ZONG_DATOS_S3, por ejemplo:
+#   ZONG_DATOS_S3 = s3://zong-datos-privados/datos.json
+# y dale al rol de servicio de Amplify permiso de lectura (s3:GetObject) sobre ese archivo.
+version: 1
+frontend:
+  phases:
+    build:
+      commands:
+        - test -n "$ZONG_DATOS_S3" || (echo "Falta la variable ZONG_DATOS_S3 en Amplify" && exit 1)
+        - mkdir -p sitio
+        - aws s3 cp "$ZONG_DATOS_S3" /tmp/datos.json
+        - python3 prototipo/tools/construir.py prototipo/cancionero.template.html /tmp/datos.json sitio/index.html
+  artifacts:
+    baseDirectory: sitio
+    files:
+      - '**/*'
