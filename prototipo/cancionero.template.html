@@ -54,7 +54,14 @@ header.top .file{color:var(--muted);font-size:13px;overflow:hidden;text-overflow
 .tabs{display:none;gap:4px;padding:8px 16px 0;background:var(--surface);border-bottom:1px solid var(--line)}
 .tabs button{flex:1;border:0;background:none;padding:10px;border-bottom:3px solid transparent;font-weight:700;color:var(--muted)}
 .tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--accent)}
-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:0}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,var(--lw,51%)) 10px minmax(0,1fr);gap:0}
+.split{cursor:col-resize;touch-action:none;position:relative;background:transparent;border:0;padding:0;margin-left:-1px}
+.split::before{content:"";position:absolute;top:0;bottom:0;left:4px;width:2px;background:var(--line)}
+.split::after{content:"";position:absolute;top:50%;left:2px;width:6px;height:36px;margin-top:-18px;border-radius:3px;background:var(--muted);opacity:.5}
+.split:hover::before,.split.drag::before,.split:focus-visible::before{background:var(--accent)}
+.split:hover::after,.split.drag::after{background:var(--accent);opacity:1}
+body.resizing{cursor:col-resize;user-select:none;-webkit-user-select:none}
+.libcol{border-right:0 !important}
 .col{display:flex;flex-direction:column;min-height:0;min-width:0;border-right:1px solid var(--line)}
 .col:last-child{border-right:0;background:var(--surface)}
 .colhead{padding:14px 16px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
@@ -91,6 +98,10 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 .item .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .m{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .item .miss{color:var(--warn)}
+.tagdot.local{border-color:var(--warn);color:var(--warn)}
+.seg.src{align-self:flex-start}
+.seg.src small{opacity:.7;margin-left:4px}
+.minebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 16px 0;padding:10px 12px;border-radius:8px;background:var(--warn-soft);font-size:14px}
 .tagdot.mod{border-color:var(--accent);color:var(--accent)}
 .item select{font-family:var(--display);font-weight:700;font-size:17px;border:1px solid var(--line);border-radius:6px;background:var(--accent-soft);color:var(--accent);padding:4px 4px;min-height:36px}
 .item .x{width:36px;height:36px;border:0;background:none;color:var(--muted);font-size:20px;border-radius:50%}
@@ -101,6 +112,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 .mv button{border:0;background:none;color:var(--muted);padding:0 4px;font-size:13px;line-height:1.1}
 .setfoot{border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;background:var(--surface)}
 .tagdot{display:inline-block;font-size:12px;padding:0 6px;border-radius:4px;border:1px solid var(--line);margin-right:4px;color:var(--muted)}
+.banner.upd{background:var(--accent-soft)}
 .banner{background:var(--warn-soft);color:var(--ink);padding:10px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px;border-bottom:1px solid var(--line)}
 /* viewer */
 .viewer{position:fixed;inset:0;background:var(--surface);display:none;flex-direction:column;z-index:20}
@@ -186,6 +198,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
 @media (max-width:820px){
   .tabs{display:flex}
   main{grid-template-columns:minmax(0,1fr)}
+  .split{display:none}
   .col{border-right:0}
   main[data-tab="lib"] .col.setcol{display:none}
   main[data-tab="set"] .col.libcol{display:none}
@@ -213,6 +226,7 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
     </div>
   </header>
   <div class="banner hidden" id="banner"></div>
+  <div class="banner upd hidden" id="updBanner" role="status"><span>Hay una nueva versión del cancionero. Actualiza para ver los cambios.</span><button class="btn primary" id="updBtn">↻ Actualizar</button></div>
   <nav class="tabs" role="tablist">
     <button role="tab" id="tabLib" aria-selected="true">Canciones</button>
     <button role="tab" id="tabSet" aria-selected="false">Lista <span id="tabCount"></span></button>
@@ -220,25 +234,28 @@ ol.items{list-style:none;margin:0;padding:6px 8px 24px;counter-reset:n}
   <main id="main" data-tab="lib">
     <section class="col libcol" aria-label="Cancionero">
       <div class="colhead">
+        <div class="seg src" id="srcSeg" role="group" aria-label="Origen de los cantos"></div>
         <div class="row">
           <input class="search" id="q" type="search" placeholder="Buscar título, artista o letra" autocomplete="off">
           <select class="sel" id="keyFilter" aria-label="Filtrar por tono"></select>
         </div>
         <div class="chips" id="chips"></div>
       </div>
+      <div class="minebar hidden" id="mineBar"><span>Estos cantos solo están en tu navegador. Compártelos para que se publiquen para todo el grupo.</span><button class="btn primary" id="shareMine">Compartir mis cantos</button></div>
       <div class="count" id="libCount"></div>
       <div class="scroll"><ul class="songs" id="songs"></ul></div>
       <div class="setfoot">
         <button class="btn primary" id="newSong">Nueva canción</button>
-        <button class="btn" id="importBtn">Agregar desde MySongbook</button>
-        <input type="file" id="fileIn" class="hidden">
       </div>
     </section>
+    <div class="split" id="split" role="separator" aria-orientation="vertical" aria-label="Ajustar el ancho del cancionero y la lista" tabindex="0" title="Arrastra para cambiar el ancho. Doble clic para volver al tamaño normal."></div>
     <section class="col setcol" aria-label="Lista">
       <div class="colhead">
         <div class="setpick">
           <select class="sel" id="setSel" aria-label="Elegir lista"></select>
           <button class="btn primary" id="newSet">Nueva lista</button>
+          <button class="btn" id="importBtn">Subir lista</button>
+          <input type="file" id="fileIn" class="hidden" accept=".zip,.mysongbook,.xml">
         </div>
         <div>
           <p class="setname" id="setName"></p>
@@ -291,6 +308,7 @@ const $=id=>document.getElementById(id);
 document.body.prepend($('shell').content.cloneNode(true));
 
 let DATA=JSON.parse($('data').textContent);
+const PUB_SONGS=JSON.parse($('data').textContent).songs;
 let BASE=DATA.savedAt;
 let dirty=false, ART=null, DL=null;
 /* Fuera de claude.ai (por ejemplo en AWS Amplify) no hay window.claude: se descarga con un enlace normal y "Guardar" baja un .zip para subirlo al hosting. */
@@ -397,19 +415,34 @@ function renderFilters(){
   $('keyFilter').innerHTML='<option value="">Todos los tonos</option>'+keys.map(k=>'<option value="'+esc(k)+'"'+(ui.key===k?' selected':'')+'>'+esc(k)+'</option>').join('');
 }
 function inSet(s){const st=curSet();return !!st&&st.items.some(it=>findSong(it)===s);}
+/* ---------- del grupo / míos ---------- */
+let PUB=null;
+function songOrigin(s){
+  if(!PUB){PUB={};PUB_SONGS.forEach(x=>{PUB[songKey(x.a.Title,x.a.Artist)]=songSig(x);});}
+  const p=PUB[songKey(s.a.Title,s.a.Artist)];
+  return p==null?'mine':(p!==songSig(s)?'edited':'group');
+}
+function renderSrc(){
+  let g=0,m=0;DATA.songs.forEach(s=>{const o=songOrigin(s);if(o==='group')g++;else m++;if(o==='edited')g++;});
+  const b=(id,txt)=>'<button data-src="'+id+'" aria-pressed="'+((ui.src||'all')===id)+'">'+txt+'</button>';
+  $('srcSeg').innerHTML=b('all','Todos')+b('group','Del grupo <small>'+g+'</small>')+b('mine','Míos <small>'+m+'</small>');
+  $('mineBar').classList.toggle('hidden',ui.src!=='mine'||!m);
+}
 function renderLib(){
+  renderSrc();
   const q=norm(ui.q);
-  let list=DATA.songs.filter(s=>(!ui.tag||s.tags.includes(ui.tag))&&(!ui.key||defKey(s)===ui.key));
+  let list=DATA.songs.filter(s=>(!ui.tag||s.tags.includes(ui.tag))&&(!ui.key||defKey(s)===ui.key)&&(ui.src!=='mine'||songOrigin(s)!=='group')&&(ui.src!=='group'||songOrigin(s)!=='mine'));
   if(q){
     list=list.map(s=>({s,r:s._ta.includes(q)?(norm(s.a.Title).startsWith(q)?0:1):(s._text.includes(q)?2:9)})).filter(x=>x.r<9).sort((a,b)=>a.r-b.r||norm(a.s.a.Title).localeCompare(norm(b.s.a.Title))).map(x=>x.s);
   } else list=list.slice().sort((a,b)=>norm(a.a.Title).localeCompare(norm(b.a.Title)));
   $('libCount').textContent=list.length+(list.length===1?' canción':' canciones');
-  if(!list.length){$('songs').innerHTML='<li class="empty-note">No hay canciones con esos filtros.</li>';return;}
+  if(!list.length){$('songs').innerHTML='<li class="empty-note">'+(ui.src==='mine'?'No tienes cantos solo en este navegador. Todo lo que ves es del grupo.':'No hay canciones con esos filtros.')+'</li>';return;}
   $('songs').innerHTML=list.map(s=>{
     const k=defKey(s),inn=inSet(s);
     const tg=s.tags.filter(t=>!/^[A-G][#b]?m?$/.test(t)).join(' · ');
-    const meta=[s.a.Artist,tg].filter(Boolean).join(' — ');
-    return '<li class="song"><button class="open" data-open="'+s._i+'"><span class="t">'+esc(s.a.Title.trim()||'Sin título')+'</span><span class="m">'+esc(meta||'—')+'</span></button><span class="key" title="Tono">'+esc(k)+'</span><button class="add'+(inn?' in':'')+'" data-add="'+s._i+'" aria-label="'+(inn?'Ya está en la lista':'Agregar a la lista')+'">'+(inn?'✓':'+')+'</button></li>';
+    const meta=[s.a.Artist,tg].filter(Boolean).join(' — ');const o=songOrigin(s);
+    const badge=o==='mine'?'<span class="tagdot local">Solo en este navegador</span> ':o==='edited'?'<span class="tagdot local">Editado aquí</span> ':'';
+    return '<li class="song"><button class="open" data-open="'+s._i+'"><span class="t">'+esc(s.a.Title.trim()||'Sin título')+'</span><span class="m">'+badge+esc(meta||'—')+'</span></button><span class="key" title="Tono">'+esc(k)+'</span><button class="add'+(inn?' in':'')+'" data-add="'+s._i+'" aria-label="'+(inn?'Ya está en la lista':'Agregar a la lista')+'">'+(inn?'✓':'+')+'</button></li>';
   }).join('');
 }
 
@@ -791,7 +824,7 @@ $('copySet').addEventListener('click',async()=>{const st=curSet();const txt=setT
 $('exportSet').addEventListener('click',async()=>{
   const st=curSet();if(!st.items.length){toast('La lista está vacía');return;}
   if(!DL||typeof JSZip==='undefined'){dialog({title:'No se puede descargar aquí',text:'Abre esta página en claude.ai para descargar el archivo.',ok:'Entendido',cancel:false});return;}
-  const r=await dialog({title:'Compartir lista',text:'Se descarga un .zip con esta lista y sus canciones (con los cambios hechos para esta lista). Mándalo a quien quieras: lo carga con Agregar desde MySongbook. También sirve en el iPad: ábrelo en Archivos, toca el .mysongbook y elige MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
+  const r=await dialog({title:'Compartir lista',text:'Se descarga un .zip con esta lista y sus canciones (con los cambios hechos para esta lista). Mándalo a quien quieras: lo carga con Subir lista (no hace falta descomprimirlo). También sirve en el iPad: ábrelo en Archivos, toca el .mysongbook y elige MySongbook.',check:'Incluir las canciones completas (necesario para compartirla con otra persona o si la lista llega vacía al iPad)',checked:true,ok:'Descargar'});
   if(!r)return;
   try{
     const zip=new JSZip();const name=safeName(st.title);
@@ -803,7 +836,11 @@ $('exportSet').addEventListener('click',async()=>{
 $('importBtn').addEventListener('click',()=>$('fileIn').click());
 $('fileIn').addEventListener('change',async e=>{
   const f=e.target.files[0];e.target.value='';if(!f)return;
-  let res;try{res=parseMSB(await f.text());}catch(err){toast('Ese archivo no parece un respaldo de MySongbook.');return;}
+  let txt;try{
+    if(/\.zip$/i.test(f.name)){if(typeof JSZip==='undefined')throw 0;const z=await JSZip.loadAsync(f);const e=Object.values(z.files).find(x=>!x.dir&&/\.mysongbook$/i.test(x.name));if(!e)throw 0;txt=await e.async('string');}
+    else txt=await f.text();
+  }catch(err){toast('Ese archivo no parece una lista compartida.');return;}
+  let res;try{res=parseMSB(txt);}catch(err){toast('Ese archivo no parece un respaldo de MySongbook.');return;}
   if(!res.songs.length&&!res.sets.length){toast('El archivo no trae canciones ni listas.');return;}
   /* Se suma al cancionero: nunca se borra nada. Cantos con el mismo título y artista se consideran el mismo. */
   res.sets.forEach(x=>{x.id='';});
@@ -816,13 +853,37 @@ $('fileIn').addEventListener('change',async e=>{
   const lines=['Se suma a lo que ya tienes; no se borra nada.',
     m.fresh.length+' canciones nuevas',m.same+' que ya tienes iguales'+(asList?', '+asList+' con cambios que se guardan solo dentro de la lista (tus originales no cambian)':''),
     m.newSets.length+' listas nuevas'+(m.knownSets?' ('+m.knownSets+' ya las tienes)':'')];
-  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo descarguen con Compartir lista');
+  if(missing.size)lines.push('Ojo: '+missing.size+' canciones de las listas no vienen en el archivo. Pide que lo compartan con Compartir lista');
   const r=await dialog({title:'Cargar '+f.name,text:lines.join(' · '),ok:'Cargar'});
   if(!r)return;
   applyMerge(m,false,'de '+f.name.replace(/\.mysongbook$/i,''));
   markDirty();renderAll();
   toast('Listo: '+m.fresh.length+' canciones y '+m.newSets.length+' listas agregadas');
 });
+$('srcSeg').addEventListener('click',e=>{const b=e.target.closest('[data-src]');if(!b)return;ui.src=b.dataset.src;renderLib();});
+$('shareMine').addEventListener('click',async()=>{
+  const mine=DATA.songs.filter(s=>songOrigin(s)!=='group');if(!mine.length)return;
+  if(!DL||typeof JSZip==='undefined'){toast('No se pudo preparar el archivo.');return;}
+  const r=await dialog({title:'Compartir mis cantos',text:'Se descarga un .zip con tus '+mine.length+' cantos que solo están en este navegador. Mándalo a quien publica; lo carga con Subir lista (no hace falta descomprimirlo).',ok:'Descargar'});
+  if(!r)return;
+  try{const zip=new JSZip();zip.file('Mis cantos.mysongbook','<?xml version="1.0" encoding="UTF-8"?>\n<Songs>'+mine.map(songXML).join('')+'</Songs>');
+    await DL.save({filename:'Mis cantos.zip',data:await zip.generateAsync({type:'blob'})});toast('Archivo listo');}
+  catch(e){if(e&&e.code==='declined')return;toast('No se pudo descargar el archivo.');}
+});
+/* Ancho de las dos columnas en escritorio: se arrastra la línea del medio y se recuerda en este navegador. */
+(function(){
+  const m=$('main'),sp=$('split');const clamp=v=>Math.min(75,Math.max(25,v));
+  const apply=v=>{m.style.setProperty('--lw',v+'%');sp.setAttribute('aria-valuenow',String(Math.round(v)));};
+  const saved=ls.get('msb-lw');if(typeof saved==='number')apply(clamp(saved));
+  let drag=false;
+  const move=e=>{if(!drag)return;const r=m.getBoundingClientRect();apply(clamp((e.clientX-r.left)/r.width*100));};
+  sp.addEventListener('pointerdown',e=>{drag=true;sp.setPointerCapture(e.pointerId);sp.classList.add('drag');document.body.classList.add('resizing');});
+  sp.addEventListener('pointermove',move);
+  const end=()=>{if(!drag)return;drag=false;sp.classList.remove('drag');document.body.classList.remove('resizing');ls.set('msb-lw',parseFloat(m.style.getPropertyValue('--lw'))||51);};
+  sp.addEventListener('pointerup',end);sp.addEventListener('pointercancel',end);
+  sp.addEventListener('dblclick',()=>{m.style.removeProperty('--lw');ls.del('msb-lw');});
+  sp.addEventListener('keydown',e=>{if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();const cur=parseFloat(m.style.getPropertyValue('--lw'))||51;const v=clamp(cur+(e.key==='ArrowLeft'?-2:2));apply(v);ls.set('msb-lw',v);});
+})();
 $('tabLib').addEventListener('click',()=>setTab('lib'));
 $('tabSet').addEventListener('click',()=>setTab('set'));
 $('saveBtn').addEventListener('click',()=>HOSTED?exportSite():save());
@@ -923,6 +984,24 @@ $('vBody').addEventListener('touchend',e=>{
 $('vBody').addEventListener('touchcancel',()=>{sw=null;},{passive:true});
 window.addEventListener('beforeunload',()=>ss.set('msb-ui',ui));
 
+/* ---------- aviso de versión nueva (fuera de claude.ai) ---------- */
+function pageSig(doc){const d=doc.getElementById('data'),a=doc.getElementById('app');let t='';try{t=JSON.parse(d.textContent).savedAt||'';}catch(e){}const c=a?a.textContent:'';let h=0;for(let i=0;i<c.length;i++)h=(h*31+c.charCodeAt(i))|0;return t+'|'+h;}
+function watchUpdates(){
+  const mine=pageSig(document);let busy=false;
+  const check=async()=>{
+    if(busy||document.hidden||!$('updBanner').classList.contains('hidden'))return;busy=true;
+    try{
+      const u=location.href.split('#')[0];const r=await fetch(u+(u.includes('?')?'&':'?')+'v='+Date.now(),{cache:'no-store'});
+      if(r.ok){const doc=new DOMParser().parseFromString(await r.text(),'text/html');if(doc.getElementById('data')&&pageSig(doc)!==mine)$('updBanner').classList.remove('hidden');}
+    }catch(e){}
+    busy=false;
+  };
+  $('updBtn').onclick=()=>{ss.set('msb-ui',ui);location.reload();};
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  window.addEventListener('focus',check);
+  setInterval(check,120000);setTimeout(check,3000);
+}
+
 /* ---------- arranque ---------- */
 reindex();
 if(!curSet()&&DATA.sets[0])ui.set=DATA.sets[0].id; else if(curSet())ui.set=curSet().id;
@@ -945,7 +1024,7 @@ else if(draft&&draft.data){
 }
 setTab(ui.tab||'lib');
 renderAll();
-if(HOSTED){DL={save:blobDownload};renderStatus();}
+if(HOSTED){DL={save:blobDownload};renderStatus();watchUpdates();}
 else{
   window.claude.use('artifact').then(a=>{ART=a;renderStatus();}).catch(()=>{});
   window.claude.use('downloads').then(d=>{DL=d;$('exportSet').classList.toggle('hidden',!d);}).catch(()=>{});
