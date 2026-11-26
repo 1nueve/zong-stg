@@ -1,51 +1,28 @@
-# Publicar el prototipo en zong.1nueve.com (AWS Amplify)
+# Publicar el prototipo en Amplify desde GitHub
 
-Esta guía mueve el prototipo "Cancionero y listas" de claude.ai a tu cuenta de AWS, con AWS Amplify Hosting conectado a GitHub y el dominio `zong.1nueve.com`.
+Este repo publica el prototipo "Cancionero y listas" en la app de Amplify que ya existe, **https://main.dfdniz78lcm41.amplifyapp.com**, sin cambiar su dirección.
 
 ## Cómo funciona
 
-- El prototipo es **una sola página** (`index.html`) que lleva dentro los cantos y las listas.
-- Las letras tienen derechos de autor, así que **no van al repositorio**. Se guardan en un archivo privado, `datos.json`, en **S3** (el almacenamiento de AWS).
-- Cada vez que Amplify publica, hace esto (lo dice `amplify.yml`):
-  1. Toma el código de GitHub (rama `main`).
-  2. Baja `datos.json` de S3.
-  3. Arma `index.html` con `prototipo/tools/construir.py` y lo publica.
-- Resultado: **los cambios de código se publican solos** al aprobar un PR. Los cambios de cantos y listas se publican subiendo un `datos.json` nuevo a S3.
+- La app de Amplify se creó "sin Git", así que no se conecta directo a GitHub. En su lugar, **GitHub Actions** la publica: con cada cambio en `main` (o cuando tú lo pides), arma la página y se la sube a Amplify.
+- Las letras tienen derechos de autor, así que **no van al repositorio**. Viven en un archivo privado, `datos.json`, en **S3**.
+- Pasos de cada publicación (archivo `.github/workflows/publicar-amplify.yml`):
+  1. Baja `datos.json` de S3.
+  2. Arma `index.html` con `prototipo/tools/construir.py`.
+  3. Se lo entrega a Amplify (igual que arrastrar el zip, pero automático).
 
-## Qué cambia respecto a claude.ai
+## Configuración (una sola vez)
 
-| | En claude.ai | En zong.1nueve.com |
-|---|---|---|
-| Ver cantos, listas, transponer, pantalla completa | Sí | Sí |
-| Descargar para MySongbook | Sí | Sí (descarga normal del navegador) |
-| Botón **Guardar** | Guarda para todos | Se llama **Descargar para publicar**: baja `zong-sitio.zip` con `datos.json` actualizado (ver paso 5) |
-| Cambios sin publicar | Se quedan en el navegador | Igual: se quedan en el navegador hasta que publiques |
+### 1. Guardar los cantos en S3
 
-**Los datos no se pierden al mudarse**, porque lo guardado vive dentro de la página. Lo único que no se muda son los cambios que alguien dejó **sin guardar** en claude.ai (viven en el navegador de esa persona). Antes de mudarte, presiona **Guardar** en claude.ai.
+1. Consola de AWS → **S3** → **Crear bucket**. Nombre, por ejemplo, `zong-datos-1nueve`. Región: la misma de la app de Amplify (la ves arriba a la derecha cuando abres la app).
+2. Deja marcado **Bloquear todo el acceso público**. Crear.
+3. **Cargar** → sube tu `datos.json` (viene dentro del zip de **Descargar para publicar**).
 
-Después de la mudanza, usa **una sola** como la buena: zong.1nueve.com.
+### 2. Crear un usuario de AWS solo para GitHub
 
-## Paso 1. Guardar los cantos en S3 (privado)
-
-1. En la consola de AWS abre **S3** → **Crear bucket**.
-2. Nombre: por ejemplo `zong-datos-1nueve` (debe ser único en todo AWS). Región: la misma que usarás en Amplify (por ejemplo `us-east-1`).
-3. Deja marcado **Bloquear todo el acceso público**. Crear.
-4. Entra al bucket → **Cargar** → sube el `datos.json` que te pasé. Queda en `s3://zong-datos-1nueve/datos.json`.
-
-## Paso 2. Crear la app en Amplify conectada a GitHub
-
-1. Abre **AWS Amplify** → **Crear nueva aplicación** → **GitHub** → autoriza y elige el repo `1nueve/zong-stg`, rama `main`.
-2. En la configuración de compilación Amplify detecta `amplify.yml` solo. No cambies nada.
-3. En **Configuración avanzada → Variables de entorno** agrega:
-   - Variable: `ZONG_DATOS_S3`
-   - Valor: `s3://zong-datos-1nueve/datos.json`
-4. En **Rol de servicio**, elige **Crear y usar un nuevo rol de servicio**. Anota su nombre (algo como `AmplifySSRLoggingRole-…` o `amplifyconsole-backend-role`).
-5. **Guardar e implementar**. La primera vez va a **fallar** en el paso de S3, porque el rol aún no puede leer el bucket. Es normal: sigue al paso 3.
-
-## Paso 3. Dar permiso al rol para leer los cantos
-
-1. Abre **IAM → Roles** y busca el rol del paso anterior.
-2. **Agregar permisos → Crear política insertada** → pestaña **JSON** y pega (cambia el nombre del bucket si usaste otro):
+1. **IAM → Usuarios → Crear usuario**. Nombre: `github-zong-stg`. **No** le des acceso a la consola.
+2. En permisos elige **Adjuntar políticas directamente → Crear política** → pestaña **JSON** y pega (cambia la región `us-east-1`, el número de cuenta `123456789012` y el bucket si son distintos):
 
 ```json
 {
@@ -55,17 +32,62 @@ Después de la mudanza, usa **una sola** como la buena: zong.1nueve.com.
       "Effect": "Allow",
       "Action": "s3:GetObject",
       "Resource": "arn:aws:s3:::zong-datos-1nueve/datos.json"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["amplify:CreateDeployment", "amplify:StartDeployment", "amplify:GetJob"],
+      "Resource": "arn:aws:amplify:us-east-1:123456789012:apps/dfdniz78lcm41/branches/main/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["amplify:CreateDeployment", "amplify:StartDeployment"],
+      "Resource": "arn:aws:amplify:us-east-1:123456789012:apps/dfdniz78lcm41/branches/main"
     }
   ]
 }
 ```
 
-3. Nómbrala `zong-leer-datos` y guarda.
-4. Vuelve a Amplify → rama `main` → **Volver a implementar esta versión** (Redeploy this version). Ahora sí debe quedar verde. Abre la dirección `https://main.d….amplifyapp.com` y revisa tus cantos.
+   Tu número de cuenta lo ves arriba a la derecha de la consola, al tocar tu nombre.
+3. Nómbrala `zong-stg-publicar`, créala, vuelve a la pestaña del usuario, búscala, márcala y termina de crear el usuario.
+4. Entra al usuario → **Credenciales de seguridad → Crear clave de acceso** → elige **Aplicación que se ejecuta fuera de AWS**. Copia la **clave de acceso** y la **clave secreta** (la secreta solo se muestra una vez).
 
-> Si en el paso 2 Amplify no te dejó elegir rol: en la app ve a **Configuración de la aplicación → Configuración general → Rol de servicio → Editar** y crea o elige uno.
+### 3. Guardar la configuración en GitHub
 
-## Paso 4. Conectar zong.1nueve.com
+En https://github.com/1nueve/zong-stg → **Settings → Secrets and variables → Actions**:
+
+- Pestaña **Secrets** → **New repository secret**:
+  - `AWS_ACCESS_KEY_ID` = la clave de acceso
+  - `AWS_SECRET_ACCESS_KEY` = la clave secreta
+- Pestaña **Variables** → **New repository variable**:
+  - `AWS_REGION` = la región de tu app (por ejemplo `us-east-1`)
+  - `AMPLIFY_APP_ID` = `dfdniz78lcm41`
+  - `ZONG_DATOS_S3` = `s3://zong-datos-1nueve/datos.json`
+
+### 4. Probar
+
+En GitHub → pestaña **Actions** → **Publicar en Amplify** → **Run workflow**. En uno o dos minutos debe quedar en verde, y la página se actualiza en https://main.dfdniz78lcm41.amplifyapp.com. Si sale en rojo, el mensaje dice qué falta.
+
+## Día a día
+
+- **Cambios de código:** cuando unes un PR a `main`, se publica solo.
+- **Cambios de cantos o listas:** en la página presiona **Descargar para publicar**, descomprime el zip, sube el `datos.json` nuevo a S3 (reemplaza el anterior) y en GitHub → **Actions** → **Publicar en Amplify** → **Run workflow**.
+
+Esto último desaparece cuando la página guarde directo en la base de datos (Supabase).
+
+## Qué cambia respecto a claude.ai
+
+| | En claude.ai | En Amplify |
+|---|---|---|
+| Ver cantos, listas, transponer, pantalla completa | Sí | Sí |
+| Descargar para MySongbook | Sí | Sí (descarga normal del navegador) |
+| Botón **Guardar** | Guarda para todos | Se llama **Descargar para publicar**: baja `zong-sitio.zip` con `datos.json` actualizado (ver "Día a día") |
+| Cambios sin publicar | Se quedan en el navegador | Igual: se quedan en el navegador hasta que publiques |
+
+**Los datos no se pierden al mudarse**, porque lo guardado vive dentro de la página. Lo único que no se muda son los cambios que alguien dejó **sin guardar** en claude.ai (viven en el navegador de esa persona). Antes de mudarte, presiona **Guardar** en claude.ai.
+
+Después de la mudanza, usa **una sola** como la buena: la de Amplify.
+
+## Más adelante: dominio propio
 
 1. En la app: **Hosting → Dominios personalizados → Agregar dominio**.
 2. Escribe `1nueve.com` → **Configurar dominio**.
@@ -76,7 +98,7 @@ El DNS de 1nueve.com está en **Route 53**. Si la zona está en la misma cuenta 
 
 Si Route 53 está en **otra cuenta**, crea a mano en esa zona (Route 53 → Zonas hospedadas → 1nueve.com → Crear registro) los dos CNAME que muestra Amplify: uno que empieza con `_` (comprueba el certificado) y `zong` → `d….cloudfront.net`. No toques los demás registros de 1nueve.com.
 
-## Paso 5 (recomendado). Ponerle contraseña
+## Recomendado: ponerle contraseña
 
 1. **Hosting → Control de acceso → Administrar acceso**.
 2. En `main` elige **Restringido: se requiere contraseña**, pon usuario y contraseña, guarda.
@@ -84,27 +106,3 @@ Si Route 53 está en **otra cuenta**, crea a mano en esa zona (Route 53 → Zona
 
 La página además trae una etiqueta para que Google no la muestre en búsquedas.
 
-## Cada vez que cambies cantos o listas
-
-1. En zong.1nueve.com haz tus cambios y presiona **Descargar para publicar**. Se baja `zong-sitio.zip`.
-2. Descomprímelo: trae `index.html` y `datos.json`.
-3. En **S3** → tu bucket → **Cargar** → sube el nuevo `datos.json` (reemplaza el anterior).
-4. En **Amplify** → rama `main` → **Volver a implementar esta versión**. En un par de minutos todos ven los cambios (si alguien no, que toque ↻).
-
-Los cambios de **código** no necesitan nada de esto: al aprobar el PR en GitHub, Amplify publica solo.
-
-## Generar datos.json desde un respaldo de MySongbook (opcional)
-
-```bash
-python3 prototipo/tools/extraer_mysongbook.py mi-respaldo.mysongbook datos.json
-```
-
-Y súbelo a S3 como en el paso 1.
-
-## Plan B: sin Git (arrastrar un zip)
-
-Si algo de lo anterior se complica, Amplify también acepta **Implementar sin Git**: arrastras un `.zip` con `index.html`. El `index.html` que viene en `zong-sitio.zip` sirve tal cual (empácalo solo, o usa `prototipo/tools/empaquetar_amplify.py`). Una app sin Git no se puede convertir después a Git; habría que crear otra.
-
-## Costo
-
-Amplify cobra por minutos de compilación, almacenamiento y tráfico; S3 por almacenamiento. Para un sitio de un archivo y un grupo son centavos al mes.

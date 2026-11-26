@@ -1,0 +1,67 @@
+# Publica el prototipo en la app de Amplify que ya existe (creada "sin Git"),
+# para conservar su dirección: https://main.dfdniz78lcm41.amplifyapp.com
+#
+# Corre solo con cada cambio en main, o a mano desde la pestaña Actions
+# ("Publicar en Amplify" → "Run workflow"), por ejemplo después de subir un datos.json nuevo a S3.
+#
+# Los cantos NO están en el repositorio (derechos de autor): se bajan de S3.
+# Configuración en GitHub → Settings → Secrets and variables → Actions:
+#   Secrets:   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY  (usuario IAM con permisos mínimos, ver docs/publicar-amplify.md)
+#   Variables: AWS_REGION        (ej. us-east-1, la región de la app de Amplify)
+#              AMPLIFY_APP_ID    (ej. dfdniz78lcm41)
+#              ZONG_DATOS_S3     (ej. s3://zong-datos-1nueve/datos.json)
+name: Publicar en Amplify
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publicar-amplify
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+      DATOS: ${{ vars.ZONG_DATOS_S3 }}
+      RAMA: main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Revisar configuración
+        run: |
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION APP_ID DATOS; do
+            if [ -z "${!v}" ]; then echo "::error::Falta configurar $v (ver docs/publicar-amplify.md)"; exit 1; fi
+          done
+
+      - name: Armar la página con los cantos de S3
+        run: |
+          mkdir -p sitio
+          aws s3 cp "$DATOS" /tmp/datos.json
+          python3 prototipo/tools/construir.py prototipo/cancionero.template.html /tmp/datos.json sitio/index.html
+          python3 prototipo/tools/empaquetar_amplify.py sitio/index.html /tmp/sitio.zip
+
+      - name: Subir a Amplify
+        run: |
+          set -euo pipefail
+          resp=$(aws amplify create-deployment --app-id "$APP_ID" --branch-name "$RAMA")
+          job=$(echo "$resp" | jq -r .jobId)
+          url=$(echo "$resp" | jq -r .zipUploadUrl)
+          curl --fail -sS -X PUT -T /tmp/sitio.zip -H "Content-Type: application/zip" "$url"
+          aws amplify start-deployment --app-id "$APP_ID" --branch-name "$RAMA" --job-id "$job" > /dev/null
+          for i in $(seq 1 60); do
+            estado=$(aws amplify get-job --app-id "$APP_ID" --branch-name "$RAMA" --job-id "$job" --query 'job.summary.status' --output text)
+            echo "Estado: $estado"
+            case "$estado" in
+              SUCCEED) echo "Publicado: https://$RAMA.$APP_ID.amplifyapp.com"; exit 0 ;;
+              FAILED|CANCELLED) echo "::error::Amplify marcó la publicación como $estado"; exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo "::error::Amplify tardó demasiado en publicar"; exit 1
